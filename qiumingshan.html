@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>秋名山直播</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/flv.js@latest"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b0e1a;color:#e8ecf7;padding-bottom:40px}
+.header{position:sticky;top:0;background:#131727;padding:15px;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.5);display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.header h1{font-size:18px;background:linear-gradient(135deg,#7aa2ff,#b07cff);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap;}
+.header .status-tag{font-size:12px;color:#38d39f;background:rgba(56,211,159,.15);padding:4px 10px;border-radius:6px;white-space:nowrap;}
+.header button{padding:8px 16px;border-radius:8px;border:none;background:#5b8cff;color:#fff;font-weight:bold;cursor:pointer;font-size:13px;white-space:nowrap;}
+.header button:active{transform:scale(.97);}
+.container{max-width:1200px;margin:0 auto;padding:15px}
+.status{text-align:center;padding:12px;color:#8b93b0;font-size:13px;display:none;line-height:1.8;}
+.status button.refresh-btn{padding:4px 12px;border-radius:4px;border:none;background:#ffb648;color:#000;font-weight:bold;cursor:pointer;margin-left:10px;font-size:12px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-top:15px}
+.card{background:#1b2036;border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .2s;position:relative;padding:12px;text-align:center;}
+.card:hover{transform:translateY(-3px);background:#252b45;}
+.card .ch-img{width:60px;height:60px;border-radius:50%;object-fit:cover;background:#0d1120;margin:0 auto 8px;display:block;}
+.card .ch-name{font-size:13px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card .ch-desc{font-size:11px;color:#8b93b0;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.detail-page{display:none;margin-top:20px}
+.detail-header{background:#1b2036;padding:20px;border-radius:12px;text-align:center;}
+.detail-header h2{margin-bottom:10px;font-size:20px;color:#5b8cff;}
+.back-btn{margin-top:15px;padding:8px 20px;background:#38d39f;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:bold}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:1000;justify-content:center;align-items:center;flex-direction:column;padding:20px}
+.modal video{width:100%;max-width:900px;height:auto;max-height:70vh;background:#000;border-radius:8px;}
+.modal .video-error {color:#ff6b81;font-size:14px;margin-top:15px;text-align:center;max-width:800px;}
+.modal .action-btns {margin-top:15px;display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+.modal .action-btns button{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:13px;}
+.modal .action-btns .close-btn {background:#ff6b81;color:#fff;}
+.modal .action-btns .copy-btn {background:#5b8cff;color:#fff;}
+.debug-float{position:fixed;bottom:20px;right:20px;background:#ffb648;color:#000;width:40px;height:40px;border-radius:50%;display:flex;justify-content:center;align-items:center;font-size:20px;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.5);z-index:999;}
+.debug-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.95);z-index:10000;justify-content:center;align-items:center;padding:20px;}
+.debug-content{background:#1b2036;width:100%;max-width:800px;max-height:80vh;border-radius:12px;display:flex;flex-direction:column;}
+.debug-header{padding:15px;border-bottom:1px solid #262c47;display:flex;justify-content:space-between;align-items:center;}
+.debug-body{padding:15px;overflow-y:auto;flex:1;font-family:monospace;font-size:12px;color:#9fe8c8;white-space:pre-wrap;word-break:break-all;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🚗 秋名山直播</h1>
+  <span class="status-tag">本地代理已启用</span>
+  <button onclick="loadHome()">🔄 刷新</button>
+</div>
+
+<div class="container">
+  <div id="status" class="status"></div>
+  <div id="listArea" class="grid"></div>
+
+  <div id="detailArea" class="detail-page">
+    <div class="detail-header">
+      <h2 id="dTitle"></h2>
+      <button class="back-btn" onclick="showHome()">← 返回平台列表</button>
+    </div>
+    <div class="grid" id="detailGrid" style="margin-top:15px;"></div>
+  </div>
+</div>
+
+<div class="debug-float" onclick="openDebug()">🐞</div>
+
+<div id="videoModal" class="modal">
+  <video id="videoPlayer" controls autoplay></video>
+  <div class="video-error" id="videoError"></div>
+  <div class="action-btns">
+    <button class="copy-btn" onclick="copyCurrentUrl()">📋 复制播放地址</button>
+    <button class="close-btn" onclick="closePlayer()">关闭播放器</button>
+  </div>
+</div>
+
+<div id="debugModal" class="debug-modal">
+  <div class="debug-content">
+    <div class="debug-header">
+      <h3>运行日志</h3>
+      <button style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;" onclick="closeDebug()">×</button>
+    </div>
+    <div class="debug-body" id="debugBody"></div>
+  </div>
+</div>
+
+<script>
+let debugLogs = [];
+let hlsInstance = null;
+let flvPlayer = null;
+let currentPlatforms = [];
+let currentPlayUrl = '';
+
+function addLog(msg) {
+  const t = new Date().toLocaleTimeString();
+  debugLogs.push(`[${t}] ${msg}`);
+  if (debugLogs.length > 200) debugLogs.shift();
+}
+function openDebug() {
+  document.getElementById('debugBody').textContent = debugLogs.join('\n');
+  document.getElementById('debugModal').style.display = 'flex';
+}
+function closeDebug() { document.getElementById('debugModal').style.display = 'none'; }
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 【核心】所有请求统一走本地 Node 代理
+async function proxyFetch(url) {
+  const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
+  addLog(`本地代理请求: ${url}`);
+  const resp = await fetch(proxyUrl);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const text = await resp.text();
+  addLog(`返回长度: ${text.length}`);
+  return text;
+}
+
+// ============ 加载首页 ============
+async function loadHome() {
+  addLog('加载平台列表...');
+  const statusEl = document.getElementById('status');
+  const listEl = document.getElementById('listArea');
+  listEl.innerHTML = '';
+  document.getElementById('detailArea').style.display = 'none';
+  statusEl.style.display = 'block';
+  statusEl.textContent = '正在加载平台列表...';
+
+  try {
+    const text = await proxyFetch('http://api.hclyz.com:81/mf/json.txt');
+    const json = JSON.parse(text);
+    if (!json.pingtai || json.pingtai.length === 0) throw new Error('没有解析到平台数据');
+
+    currentPlatforms = json.pingtai;
+    addLog(`解析到 ${currentPlatforms.length} 个平台`);
+
+    let html = '';
+    currentPlatforms.forEach((item, i) => {
+      html += `
+        <div class="card" onclick="loadPlatform(${i})">
+          <img class="ch-img" src="${escapeHtml(item.xinimg)}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2260%22><rect fill=%22%23262c47%22 width=%2260%22 height=%2260%22/><text x=%2230%22 y=%2235%22 fill=%22%235c6688%22 font-size=%2212%22 text-anchor=%22middle%22>无图</text></svg>'">
+          <div class="ch-name">${escapeHtml(item.title)}</div>
+          <div class="ch-desc">${escapeHtml(item.Number + '名')}</div>
+        </div>`;
+    });
+    listEl.innerHTML = html;
+    statusEl.style.display = 'none';
+
+  } catch (e) {
+    addLog(`加载失败: ${e.message}`);
+    statusEl.innerHTML = `加载失败: ${e.message} <button class="refresh-btn" onclick="loadHome()">🔄 重试</button><br><small style="color:#5c6688;">请确保 node server.js 正在运行</small>`;
+    statusEl.style.color = '#ffb648';
+  }
+}
+
+// ============ 加载平台下的主播列表 ============
+async function loadPlatform(index) {
+  const platform = currentPlatforms[index];
+  if (!platform) return;
+
+  addLog(`加载平台: ${platform.title}`);
+  const statusEl = document.getElementById('status');
+  document.getElementById('listArea').style.display = 'none';
+  document.getElementById('detailArea').style.display = 'block';
+  document.getElementById('dTitle').textContent = platform.title;
+  document.getElementById('detailGrid').innerHTML = '';
+  statusEl.style.display = 'block';
+  statusEl.textContent = `正在加载 ${platform.title} 的主播列表...`;
+
+  try {
+    const detailUrl = `http://api.hclyz.com:81/mf/${platform.address}`;
+    const text = await proxyFetch(detailUrl);
+    const json = JSON.parse(text);
+    const zhubo = json.zhubo || [];
+    if (zhubo.length === 0) throw new Error('该平台没有主播数据');
+
+    let html = '';
+    zhubo.forEach((item, i) => {
+      let playUrl = item.address;
+      if (playUrl && !playUrl.startsWith('http')) playUrl = 'http://' + playUrl;
+      html += `
+        <div class="card" onclick="playStream('${escapeHtml(playUrl)}', '${escapeHtml(item.title)}')">
+          <div class="ch-name">${escapeHtml(item.title)}</div>
+          <div class="ch-desc">点击播放</div>
+        </div>`;
+    });
+    document.getElementById('detailGrid').innerHTML = html;
+    statusEl.style.display = 'none';
+
+  } catch (e) {
+    addLog(`平台加载失败: ${e.message}`);
+    statusEl.innerHTML = `加载失败: ${e.message} <button class="refresh-btn" onclick="loadPlatform(${index})">🔄 重试</button>`;
+    statusEl.style.color = '#ffb648';
+  }
+}
+
+// ============ 播放直播流（FLV 走本地流代理） ============
+function playStream(address, title) {
+  addLog(`播放: ${title} -> ${address}`);
+  currentPlayUrl = address;
+  stopCurrentVideo();
+
+  const video = document.getElementById('videoPlayer');
+  const errorDiv = document.getElementById('videoError');
+  errorDiv.textContent = '';
+  document.getElementById('videoModal').style.display = 'flex';
+
+  const isFlv = address.toLowerCase().includes('.flv') || address.toLowerCase().includes('flv?');
+  const isM3u8 = address.toLowerCase().includes('.m3u8');
+
+  if (isFlv) {
+    const finalUrl = `/api/stream?url=${encodeURIComponent(address)}`;
+    addLog(`FLV 走本地流代理: ${finalUrl}`);
+    
+    if (flvjs.isSupported()) {
+      flvPlayer = flvjs.createPlayer({
+        type: 'flv',
+        url: finalUrl,
+        isLive: true,
+        hasAudio: true,
+        hasVideo: true
+      }, {
+        enableWorker: false,
+        enableStashBuffer: false,
+        stashInitialSize: 128,
+        autoCleanupSourceBuffer: true
+      });
+      
+      flvPlayer.attachMediaElement(video);
+      flvPlayer.load();
+      
+      flvPlayer.on(flvjs.Events.ERROR, (errType, errDetail) => {
+        const msg = `FLV播放错误: ${errType} - ${errDetail}`;
+        addLog(msg);
+        errorDiv.textContent = '❌ ' + msg + '，请尝试复制地址去 VLC 播放器测试。';
+      });
+
+      flvPlayer.play().catch(e => addLog('自动播放被阻止，请手动点击播放'));
+    } else {
+      errorDiv.textContent = '⚠️ 当前浏览器不支持 FLV 播放，请使用 Chrome/Edge。';
+      addLog('flvjs 不被支持');
+    }
+  } 
+  else if (isM3u8) {
+    if (Hls.isSupported()) {
+      hlsInstance = new Hls();
+      hlsInstance.on(Hls.Events.ERROR, function(event, data) {
+        if (data.fatal) {
+          let errMsg = data.type === Hls.ErrorTypes.NETWORK_ERROR ? '网络错误：无法拉取直播流' : '媒体错误：视频流格式无法解析';
+          addLog(`播放错误: ${errMsg}`);
+          errorDiv.textContent = '❌ ' + errMsg + '，请尝试复制地址去 VLC 播放器测试。';
+        }
+      });
+      hlsInstance.loadSource(address);
+      hlsInstance.attachMedia(video);
+      video.play().catch(e => addLog('自动播放被阻止'));
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = address;
+      video.play().catch(e => addLog('自动播放被阻止'));
+    } else {
+      errorDiv.textContent = '⚠️ 当前浏览器不支持 m3u8 播放';
+    }
+  } 
+  else {
+    errorDiv.textContent = '⚠️ 未知格式，尝试直接播放...';
+    video.src = address;
+    video.play().catch(e => addLog('自动播放被阻止'));
+  }
+}
+
+function copyCurrentUrl() {
+  if (!currentPlayUrl) return alert('没有播放地址可复制');
+  navigator.clipboard.writeText(currentPlayUrl).then(() => {
+    alert('已复制播放地址：\n' + currentPlayUrl);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = currentPlayUrl;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('已复制播放地址：\n' + currentPlayUrl);
+  });
+}
+
+function stopCurrentVideo() {
+  const video = document.getElementById('videoPlayer');
+  if (!video) return;
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+  if (flvPlayer) {
+    flvPlayer.unload();
+    flvPlayer.detachMediaElement();
+    flvPlayer.destroy();
+    flvPlayer = null;
+  }
+  addLog('视频实例已彻底清理');
+}
+
+function closePlayer() {
+  stopCurrentVideo();
+  document.getElementById('videoModal').style.display = 'none';
+  document.getElementById('videoError').textContent = '';
+}
+
+function showHome() {
+  document.getElementById('detailArea').style.display = 'none';
+  document.getElementById('listArea').style.display = 'grid';
+  document.getElementById('status').style.display = 'none';
+}
+
+window.onload = function() {
+  addLog('页面加载完成');
+  loadHome();
+};
+</script>
+</body>
+</html>

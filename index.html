@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>局域网影视聚合搜索</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b0e1a;color:#e8ecf7;padding-bottom:40px}
+.header{position:sticky;top:0;background:#131727;padding:15px;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.5);display:flex;gap:10px}
+.header input{flex:1;padding:10px;border-radius:8px;border:1px solid #262c47;background:#0d1120;color:#fff;outline:none;font-size:14px}
+.header button{padding:10px 20px;border:none;border-radius:8px;background:#5b8cff;color:#fff;font-weight:bold;cursor:pointer;white-space:nowrap}
+.header button.manage-btn{background:#8b5cf6}
+.api-bar{display:flex;overflow-x:auto;white-space:nowrap;padding:10px 15px;gap:10px;background:#131727;border-top:1px solid #262c47;scrollbar-width:none;}
+.api-bar::-webkit-scrollbar{display:none;}
+.api-bar button{padding:6px 16px;border-radius:6px;border:1px solid #262c47;background:#0d1120;color:#a9b2ce;font-size:12px;cursor:pointer;transition:all .2s;}
+.api-bar button.active{background:#38d39f;color:#fff;border-color:#38d39f;font-weight:bold;}
+.category-bar{display:flex;overflow-x:auto;white-space:nowrap;padding:10px 15px;gap:10px;background:#131727;border-top:1px solid #262c47;scrollbar-width:none;}
+.category-bar::-webkit-scrollbar{display:none;}
+.category-bar button{padding:6px 16px;border-radius:20px;border:1px solid #262c47;background:#0d1120;color:#a9b2ce;font-size:13px;cursor:pointer;transition:all .2s;}
+.category-bar button.active{background:#5b8cff;color:#fff;border-color:#5b8cff;font-weight:bold;}
+.container{max-width:1200px;margin:0 auto;padding:15px}
+.status{text-align:center;padding:12px;color:#8b93b0;font-size:13px;display:none;line-height:1.8;}
+.status button.refresh-btn{padding:4px 12px;border-radius:4px;border:none;background:#ffb648;color:#000;font-weight:bold;cursor:pointer;margin-left:10px;font-size:12px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:15px;margin-top:15px}
+.card{background:#1b2036;border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .2s;position:relative;min-height:260px;display:flex;flex-direction:column;}
+.card:hover{transform:translateY(-3px)}
+.card img{width:100%;height:210px;object-fit:cover;background:#1b2036;display:block;flex-shrink:0;}
+.card .source-tag{position:absolute;top:6px;right:6px;background:rgba(91,140,255,.85);color:#fff;font-size:10px;padding:2px 8px;border-radius:10px}
+.card .info{padding:10px;flex:1;display:flex;flex-direction:column;justify-content:center;}
+.card .title{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:bold}
+.card .desc{font-size:11px;color:#8b93b0;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .error-tip{color:#ff6b81;font-size:12px;text-align:center;padding:10px;}
+.detail-page{display:none;margin-top:20px}
+.detail-header{display:flex;gap:20px;background:#1b2036;padding:20px;border-radius:12px;flex-wrap:wrap}
+.detail-header img{width:180px;height:250px;object-fit:cover;border-radius:8px;background:#1b2036}
+.detail-info{flex:1;min-width:250px}
+.detail-info h2{margin-bottom:10px;font-size:22px}
+.detail-info p{color:#a9b2ce;font-size:13px;margin-bottom:6px;line-height:1.6}
+.play-lines{margin-top:20px;display:flex;gap:10px;flex-wrap:wrap}
+.play-lines button{padding:8px 16px;border:1px solid #262c47;background:#0d1120;color:#a9b2ce;border-radius:6px;cursor:pointer;font-size:13px}
+.play-lines button.active{background:#5b8cff;color:#fff;border-color:#5b8cff}
+.episodes{display:grid;grid-template-columns:repeat(auto-fill,minmax(85px,1fr));gap:10px;margin-top:15px}
+.episodes button{padding:8px;border:none;background:#262c47;color:#e8ecf7;border-radius:6px;cursor:pointer;font-size:12px}
+.episodes button:hover{background:#5b8cff}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:1000;justify-content:center;align-items:center;flex-direction:column;padding:20px}
+.modal video{width:100%;max-width:900px;height:auto;max-height:70vh;background:#000}
+.close-btn{margin-top:15px;padding:10px 30px;background:#ff6b81;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.back-btn{margin-top:15px;padding:8px 20px;background:#38d39f;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:bold}
+.api-modal-content{background:#1b2036;width:100%;max-width:600px;max-height:80vh;border-radius:12px;display:flex;flex-direction:column;overflow:hidden}
+.api-modal-header{padding:15px 20px;border-bottom:1px solid #262c47;display:flex;justify-content:space-between;align-items:center}
+.api-modal-header h3{font-size:16px}
+.api-modal-body{padding:20px;overflow-y:auto;flex:1}
+.api-input-group{display:flex;gap:10px;margin-bottom:15px}
+.api-input-group input{padding:8px;border-radius:6px;border:1px solid #262c47;background:#0d1120;color:#fff;outline:none}
+.api-input-group input.name{width:100px}
+.api-input-group input.url{flex:1}
+.api-input-group button{padding:8px 15px;background:#38d39f;border:none;border-radius:6px;color:#fff;cursor:pointer;font-weight:bold}
+.api-list{list-style:none}
+.api-list li{display:flex;justify-content:space-between;align-items:center;padding:10px;background:#0d1120;border-radius:6px;margin-bottom:8px;font-size:13px}
+.api-list li span{color:#a9b2ce;word-break:break-all;flex:1;margin-right:10px}
+.api-list li button{padding:4px 10px;background:#ff6b81;border:none;border-radius:4px;color:#fff;cursor:pointer;font-size:12px}
+.api-modal-footer{padding:15px 20px;border-top:1px solid #262c47;display:flex;justify-content:space-between}
+.api-modal-footer button{padding:10px 20px;border-radius:6px;border:none;cursor:pointer;font-weight:bold}
+.api-modal-footer .save-btn{background:#5b8cff;color:#fff}
+.api-modal-footer .reset-btn{background:#262c47;color:#a9b2ce}
+.debug-float{position:fixed;bottom:20px;right:20px;background:#ffb648;color:#000;width:40px;height:40px;border-radius:50%;display:flex;justify-content:center;align-items:center;font-size:20px;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.5);z-index:999;}
+.debug-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.95);z-index:10000;justify-content:center;align-items:center;padding:20px;}
+.debug-content{background:#1b2036;width:100%;max-width:800px;max-height:80vh;border-radius:12px;display:flex;flex-direction:column;}
+.debug-header{padding:15px;border-bottom:1px solid #262c47;display:flex;justify-content:space-between;align-items:center;}
+.debug-body{padding:15px;overflow-y:auto;flex:1;font-family:monospace;font-size:12px;color:#9fe8c8;white-space:pre-wrap;word-break:break-all;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <input type="text" id="keyword" placeholder="输入影视名称..." />
+  <button onclick="searchAll()">搜索</button>
+  <button class="manage-btn" onclick="openApiManager()">管理接口</button>
+</div>
+<div class="api-bar" id="homeApiBar"></div>
+<div class="category-bar" id="categoryBar">
+  <button class="active" onclick="loadCategory('', this)">全部</button>
+  <button onclick="loadCategory('1', this)">电影</button>
+  <button onclick="loadCategory('2', this)">连续剧</button>
+  <button onclick="loadCategory('3', this)">综艺</button>
+  <button onclick="loadCategory('4', this)">动漫</button>
+  <button onclick="loadCategory('15', this)">国产剧</button>
+  <button onclick="loadCategory('16', this)">欧美剧</button>
+</div>
+<div class="container">
+  <div id="status" class="status"></div>
+  <div id="listArea" class="grid"></div>
+  <div id="detailArea" class="detail-page">
+    <div class="detail-header">
+      <img id="dPic" src="" alt="封面" referrerpolicy="no-referrer">
+      <div class="detail-info">
+        <h2 id="dTitle"></h2>
+        <p id="dActor"></p><p id="dClass"></p><p id="dTime"></p>
+        <p id="dContent" style="color:#8b93b0;margin-top:8px;"></p>
+        <button class="back-btn" onclick="showHome()">← 返回列表</button>
+      </div>
+    </div>
+    <div style="margin-top:20px;">
+      <h3 style="font-size:16px;margin-bottom:10px;">播放线路</h3>
+      <div id="lineBtns" class="play-lines"></div>
+      <h3 style="font-size:16px;margin-top:15px;">选集列表</h3>
+      <div id="episodeBtns" class="episodes"></div>
+    </div>
+  </div>
+</div>
+<div class="debug-float" onclick="openDebug()">🐞</div>
+<div id="videoModal" class="modal">
+  <video id="videoPlayer" controls autoplay></video>
+  <button class="close-btn" onclick="closePlayer()">关闭播放器</button>
+</div>
+<div id="apiManagerModal" class="modal">
+  <div class="api-modal-content">
+    <div class="api-modal-header">
+      <h3>资源接口管理</h3>
+      <button style="background:none;border:none;color:#a9b2ce;font-size:20px;cursor:pointer;" onclick="closeApiManager()">×</button>
+    </div>
+    <div class="api-modal-body">
+      <div class="api-input-group">
+        <input type="text" id="newApiName" class="name" placeholder="名称">
+        <input type="text" id="newApiUrl" class="url" placeholder="接口地址">
+        <button onclick="addApiSite()">添加</button>
+      </div>
+      <ul id="apiList" class="api-list"></ul>
+    </div>
+    <div class="api-modal-footer">
+      <button class="reset-btn" onclick="resetApiSites()">恢复默认</button>
+      <button class="save-btn" onclick="saveApiSites()">保存并生效</button>
+    </div>
+  </div>
+</div>
+<div id="debugModal" class="debug-modal">
+  <div class="debug-content">
+    <div class="debug-header">
+      <h3>接口原始日志（用于排查错误）</h3>
+      <button style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;" onclick="closeDebug()">×</button>
+    </div>
+    <div class="debug-body" id="debugBody"></div>
+  </div>
+</div>
+
+<script>
+// ============ 默认资源站接口 ============
+const DEFAULT_API_SITES = [
+  { name: '量子',  base: 'https://cj.lziapi.com' },
+  { name: '西瓜',  base: 'https://caiji.xgzyapi.com' },
+  { name: '电影天堂', base: 'http://caiji.dyttzyapi.com' },
+  { name: '非凡',  base: 'http://cj.ffzyapi.com' },
+  { name: '百度云', base: 'https://api.apibdzy.com' },
+  { name: '奇艺',  base: 'https://iqiyizyapi.com' },
+  { name: '天涯',  base: 'http://tyyszy.com' }
+];
+
+let API_SITES = [];
+let tempApiSites = [];
+let currentDetailData = null;
+let currentLineIndex = 0;
+let lastSearchResults = [];
+let currentCategoryId = '';
+let currentActiveApi = 'all'; 
+const MAX_RESULTS = 150;
+let currentRequestId = 0;
+let debugLogs = [];
+let hlsInstance = null;
+
+// ============ 日志功能 ============
+function addLog(msg) {
+  const time = new Date().toLocaleTimeString();
+  debugLogs.push(`[${time}] ${msg}`);
+  if(debugLogs.length > 100) debugLogs.shift();
+}
+function openDebug() { document.getElementById('debugBody').textContent = debugLogs.join('\n'); document.getElementById('debugModal').style.display = 'flex'; }
+function closeDebug() { document.getElementById('debugModal').style.display = 'none'; }
+
+// ============ 工具函数 ============
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function buildApiUrl(base, params) {
+  let url = base.trim();
+  if (url.includes('?')) url = url.split('?')[0];
+  url = url.replace(/\/at\/xml\/?/i, '/at/json/');
+  if (url.endsWith('/')) url = url.slice(0, -1);
+  let finalUrl = url;
+  if (url.includes('.php') || url.includes('at/json') || url.includes('/api/')) {
+    if (!finalUrl.endsWith('.php') && !finalUrl.endsWith('/')) finalUrl += '/';
+  } else {
+    finalUrl = url + '/api.php/provide/vod/';
+  }
+  const fullUrl = finalUrl + '?' + params;
+  addLog(`构建URL: ${fullUrl}`);
+  return fullUrl;
+}
+
+// 【核心】走本地 Node 代理（使用相对路径，完美支持局域网）
+async function smartFetch(rawUrl) {
+  try {
+    const localProxyUrl = `/api/proxy?url=${encodeURIComponent(rawUrl)}`;
+    const resp = await fetch(localProxyUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    JSON.parse(text); 
+    return text;
+  } catch (e) {
+    addLog(`本地Node代理失败: ${e.message}`);
+    throw new Error('本地Node代理请求失败，请确认 node server.js 已启动');
+  }
+}
+
+// 【核心】图片走本地 Node 代理（使用相对路径）
+function getImageUrls(picUrl, baseUrl) {
+  const placeholder = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22210%22><rect fill=%22%23262c47%22 width=%22150%22 height=%22210%22/><text x=%2275%22 y=%22110%22 fill=%22%235c6688%22 font-size=%2214%22 text-anchor=%22middle%22>无图</text></svg>';
+  if (!picUrl) return { direct: '', proxy: '', placeholder };
+  let fullUrl = picUrl;
+  try {
+    if (!picUrl.startsWith('http')) {
+      if (!baseUrl || typeof baseUrl !== 'string') return { direct: '', proxy: '', placeholder };
+      fullUrl = baseUrl + picUrl;
+    }
+    let referer = '';
+    if (baseUrl && typeof baseUrl === 'string') referer = new URL(baseUrl).origin; 
+    const localImgUrl = `/api/image?url=${encodeURIComponent(fullUrl)}&referer=${encodeURIComponent(referer)}`;
+    return { direct: localImgUrl, proxy: localImgUrl, placeholder };
+  } catch (e) { return { direct: '', proxy: '', placeholder }; }
+}
+
+// ============ 初始化 ============
+function initApiSites() {
+  const saved = localStorage.getItem('user_api_sites');
+  if (saved) { try { API_SITES = JSON.parse(saved); } catch (e) { API_SITES = [...DEFAULT_API_SITES]; } } 
+  else { API_SITES = [...DEFAULT_API_SITES]; }
+  tempApiSites = JSON.parse(JSON.stringify(API_SITES));
+  if (currentActiveApi !== 'all' && !API_SITES.find(s => s.name === currentActiveApi)) currentActiveApi = 'all';
+  renderHomeApiBar();
+}
+
+function renderHomeApiBar() {
+  const bar = document.getElementById('homeApiBar'); if (!bar) return;
+  let html = `<button class="${currentActiveApi === 'all' ? 'active' : ''}" onclick="switchHomeApi('all')">全网聚合</button>`;
+  API_SITES.forEach((site, idx) => {
+    html += `<button class="${currentActiveApi === site.name ? 'active' : ''}" onclick="switchHomeApi(${idx})">${escapeHtml(site.name)}</button>`;
+  });
+  bar.innerHTML = html;
+}
+
+function switchHomeApi(index) {
+  if (index === 'all') { currentActiveApi = 'all'; } 
+  else { currentActiveApi = API_SITES[index].name; }
+  addLog(`切换接口到: ${currentActiveApi}`);
+  renderHomeApiBar();
+  const activeCatBtn = document.querySelector('#categoryBar button.active');
+  loadCategory(currentCategoryId, activeCatBtn);
+}
+
+// ============ 接口管理 ============
+function openApiManager() { tempApiSites = JSON.parse(JSON.stringify(API_SITES)); renderApiList(); document.getElementById('apiManagerModal').style.display = 'flex'; }
+function closeApiManager() { document.getElementById('apiManagerModal').style.display = 'none'; }
+function renderApiList() {
+  const ul = document.getElementById('apiList');
+  if (!tempApiSites.length) { ul.innerHTML = '<p style="color:#8b93b0;text-align:center;padding:10px;">暂无接口</p>'; return; }
+  let html = '';
+  tempApiSites.forEach((site, index) => { html += `<li><span><b style="color:#5b8cff;">[${escapeHtml(site.name)}]</b> ${escapeHtml(site.base)}</span><button onclick="removeApiSite(${index})">删除</button></li>`; });
+  ul.innerHTML = html;
+}
+function addApiSite() {
+  const nameInput = document.getElementById('newApiName'), urlInput = document.getElementById('newApiUrl');
+  const name = nameInput.value.trim(); let url = urlInput.value.trim();
+  if (!name || !url) return alert('名称和地址都不能为空');
+  if (url.endsWith('/')) url = url.slice(0, -1);
+  if (!url.startsWith('http')) url = 'http://' + url;
+  tempApiSites.push({ name, base: url }); nameInput.value = ''; urlInput.value = ''; renderApiList();
+}
+function removeApiSite(index) { tempApiSites.splice(index, 1); renderApiList(); }
+function saveApiSites() {
+  if (!tempApiSites.length) return alert('至少保留一个接口！');
+  API_SITES = JSON.parse(JSON.stringify(tempApiSites));
+  localStorage.setItem('user_api_sites', JSON.stringify(API_SITES));
+  closeApiManager(); initApiSites(); alert('接口保存成功！');
+  loadCategory(currentCategoryId);
+}
+function resetApiSites() { if (confirm('确定恢复默认接口吗？')) { tempApiSites = [...DEFAULT_API_SITES]; renderApiList(); } }
+
+function getTargetSites() {
+  if (currentActiveApi === 'all') return API_SITES;
+  const found = API_SITES.find(s => s.name === currentActiveApi);
+  return found ? [found] : API_SITES; 
+}
+
+function refreshCurrent() {
+  const activeCatBtn = document.querySelector('#categoryBar button.active');
+  addLog(`手动刷新，当前分类: ${currentCategoryId}`);
+  loadCategory(currentCategoryId, activeCatBtn);
+}
+
+// ============ 分类加载 ============
+async function loadCategory(typeId, btn) {
+  currentCategoryId = typeId; currentRequestId++; const thisRequestId = currentRequestId;
+  if(btn) { document.querySelectorAll('#categoryBar button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+  const statusEl = document.getElementById('status'), listEl = document.getElementById('listArea');
+  listEl.innerHTML = ''; document.getElementById('detailArea').style.display = 'none';
+  statusEl.style.display = 'block'; statusEl.textContent = '正在加载分类数据...';
+  lastSearchResults = []; let done = 0; let failedSites = [];
+  const targetSites = getTargetSites();
+  const params = typeId ? `ac=detail&t=${typeId}&pg=1` : 'ac=detail&pg=1';
+
+  const promises = targetSites.map(async site => {
+    try {
+      const text = await smartFetch(buildApiUrl(site.base, params));
+      const data = JSON.parse(text);
+      if (data && data.list && data.list.length > 0) {
+        data.list.forEach(item => { lastSearchResults.push({ ...item, _source: site.name, _base: site.base }); });
+        addLog(`[${site.name}] 成功获取 ${data.list.length} 条`);
+      } else { failedSites.push(site.name); addLog(`[${site.name}] 返回空`); }
+    } catch (e) { failedSites.push(site.name); addLog(`[${site.name}] 失败: ${e.message}`); }
+    finally { done++; if (thisRequestId === currentRequestId) statusEl.textContent = `正在加载... 已完成 ${done}/${targetSites.length}`; }
+  });
+
+  await Promise.allSettled(promises);
+  if (thisRequestId !== currentRequestId) return;
+  let finalMsg = `共加载 ${lastSearchResults.length} 条数据`;
+  if (failedSites.length > 0) finalMsg += ` (${failedSites.join('、')} 失败)`;
+  statusEl.innerHTML = finalMsg + ` <button class="refresh-btn" onclick="refreshCurrent()">🔄 刷新</button>`;
+  statusEl.style.color = lastSearchResults.length === 0 ? '#ffb648' : '#8b93b0';
+  renderResults(lastSearchResults);
+}
+
+// ============ 全网搜索 ============
+async function searchAll() {
+  const wd = document.getElementById('keyword').value.trim();
+  if (!wd) return alert('请输入搜索内容');
+  currentRequestId++; const thisRequestId = currentRequestId;
+  document.querySelectorAll('#categoryBar button').forEach(b => b.classList.remove('active'));
+  const statusEl = document.getElementById('status'), listEl = document.getElementById('listArea');
+  listEl.innerHTML = ''; document.getElementById('detailArea').style.display = 'none';
+  const targetSites = getTargetSites();
+  statusEl.style.display = 'block'; statusEl.textContent = '正在搜索 ' + targetSites.length + ' 个资源站...';
+  lastSearchResults = []; let done = 0; let failedSites = [];
+
+  const promises = targetSites.map(async site => {
+    try {
+      const text = await smartFetch(buildApiUrl(site.base, 'ac=videolist&wd=' + encodeURIComponent(wd)));
+      const data = JSON.parse(text);
+      if (data && data.list && data.list.length > 0) {
+        data.list.forEach(item => { lastSearchResults.push({ ...item, _source: site.name, _base: site.base }); });
+        addLog(`[${site.name}] 搜索成功 ${data.list.length} 条`);
+      } else { failedSites.push(site.name); addLog(`[${site.name}] 搜索返回空`); }
+    } catch (e) { failedSites.push(site.name); addLog(`[${site.name}] 搜索失败: ${e.message}`); }
+    finally { done++; if (thisRequestId === currentRequestId) statusEl.textContent = '正在搜索... 已完成 ' + done + '/' + targetSites.length; }
+  });
+
+  await Promise.allSettled(promises);
+  if (thisRequestId !== currentRequestId) return;
+  let finalMsg = `搜索完成，共找到 ${lastSearchResults.length} 个结果`;
+  statusEl.innerHTML = finalMsg + ` <button class="refresh-btn" onclick="searchAll()">🔄 刷新</button>`;
+  statusEl.style.color = lastSearchResults.length === 0 ? '#ffb648' : '#8b93b0';
+  renderResults(lastSearchResults);
+}
+
+// ============ 渲染结果 ============
+function renderResults(list) {
+  if (!list.length) { document.getElementById('listArea').innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#8b93b0;padding:40px;">暂无数据</p>'; return; }
+  const displayList = list.slice(0, MAX_RESULTS); let html = '';
+  for (let idx = 0; idx < displayList.length; idx++) {
+    try {
+      const item = displayList[idx];
+      const safeName = escapeHtml(item.vod_name || item.name || '未知影片');
+      const safePic = item.vod_pic || '';
+      const urls = getImageUrls(safePic, item._base);
+      const imgTag = `<img src="${urls.direct}" referrerpolicy="no-referrer" loading="lazy" onerror="this.onerror=null; this.referrerPolicy=''; this.src='${urls.placeholder}';">`;
+      html += `<div class="card" onclick="loadDetail(${idx})"><span class="source-tag">${escapeHtml(item._source || '')}</span>${imgTag}<div class="info"><div class="title">${safeName}</div><div class="desc">${escapeHtml(item.vod_remarks || '暂无更新')}</div></div></div>`;
+    } catch (err) { addLog(`渲染第 ${idx} 条失败: ${err.message}`); html += `<div class="card"><div class="error-tip">⚠️ 该条数据渲染出错</div></div>`; }
+  }
+  document.getElementById('listArea').innerHTML = html;
+}
+
+// ============ 详情与播放 ============
+async function loadDetail(idx) {
+  const item = lastSearchResults[idx]; if (!item) return;
+  document.getElementById('status').textContent = '正在加载详情...'; document.getElementById('status').style.display = 'block'; document.getElementById('listArea').style.display = 'none';
+  addLog(`加载详情: ID=${item.vod_id}`);
+  try {
+    const text = await smartFetch(buildApiUrl(item._base, 'ac=detail&ids=' + item.vod_id));
+    const data = JSON.parse(text);
+    if (data.list && data.list.length > 0) { currentDetailData = data.list[0]; renderDetail(currentDetailData); return; }
+  } catch (e) { addLog(`详情失败: ${e.message}`); }
+  currentDetailData = item; renderDetail(item);
+}
+
+function renderDetail(item) {
+  document.getElementById('status').style.display = 'none'; document.getElementById('detailArea').style.display = 'block';
+  const picEl = document.getElementById('dPic'); const urls = getImageUrls(item.vod_pic, item._base);
+  picEl.src = urls.direct; picEl.setAttribute('referrerpolicy', 'no-referrer');
+  picEl.onerror = function() { this.onerror = null; this.referrerPolicy = ''; this.src = urls.placeholder; };
+  document.getElementById('dTitle').textContent = item.vod_name || '';
+  document.getElementById('dActor').textContent = '演员：' + (item.vod_actor || '未知');
+  document.getElementById('dClass').textContent = '类型：' + (item.vod_class || '未知');
+  document.getElementById('dTime').textContent = '时间：' + (item.vod_time || '未知');
+  document.getElementById('dContent').textContent = '简介：' + (item.vod_content || item.vod_blurb || '暂无简介');
+  const playFrom = (item.vod_play_from || '').split('$$$').filter(x => x);
+  const playUrl = (item.vod_play_url || '').split('$$$').filter(x => x);
+  let lineHtml = '';
+  playFrom.forEach((name, i) => { lineHtml += `<button class="${i === 0 ? 'active' : ''}" onclick="switchLine(${i})">${escapeHtml(name)}</button>`; });
+  if (playFrom.length === 0) { lineHtml = '<p style="color:#ff6b81">⚠️ 该接口未返回播放线路。</p>'; } 
+  else { document.getElementById('lineBtns').innerHTML = lineHtml; }
+  currentLineIndex = 0; renderEpisodes(playUrl[0] || '');
+}
+
+function switchLine(index) {
+  currentLineIndex = index;
+  const playUrl = (currentDetailData.vod_play_url || '').split('$$$').filter(x => x);
+  document.querySelectorAll('#lineBtns button').forEach((btn, i) => { btn.classList.toggle('active', i === index); });
+  renderEpisodes(playUrl[index] || '');
+}
+
+function renderEpisodes(urlStr) {
+  if (!urlStr) { document.getElementById('episodeBtns').innerHTML = '<p style="color:#8b93b0">该线路无剧集</p>'; return; }
+  let html = '';
+  urlStr.split('#').forEach(ep => {
+    const parts = ep.split('$');
+    if (parts.length === 2) { html += `<button onclick="playVideo('${escapeHtml(parts[1])}')">${escapeHtml(parts[0])}</button>`; } 
+    else if (parts.length === 1 && parts[0]) { html += `<button onclick="playVideo('${escapeHtml(parts[0])}')">第${html.length + 1}集</button>`; }
+  });
+  document.getElementById('episodeBtns').innerHTML = html || '<p style="color:#8b93b0">暂无剧集</p>';
+}
+
+// ============ 播放器核心（彻底清理后台播放） ============
+function stopCurrentVideo() {
+  const video = document.getElementById('videoPlayer');
+  if (!video) return;
+  video.pause(); video.removeAttribute('src'); video.load();
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; addLog('旧视频流已销毁'); }
+}
+
+function playVideo(url) {
+  if (!url.includes('.m3u8')) { alert('该线路为网页链接，无法直接播放。请切换带 m3u8 字样的线路。'); return; }
+  stopCurrentVideo();
+  const video = document.getElementById('videoPlayer'); document.getElementById('videoModal').style.display = 'flex';
+  addLog(`开始播放: ${url}`);
+  if (Hls.isSupported()) {
+    hlsInstance = new Hls(); hlsInstance.loadSource(url); hlsInstance.attachMedia(video);
+    video.play().catch(e => addLog("自动播放被浏览器策略阻止。"));
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url; video.play().catch(e => addLog("自动播放被浏览器策略阻止。"));
+  } else { alert('当前浏览器不支持 m3u8 播放。'); closePlayer(); }
+}
+
+function closePlayer() { stopCurrentVideo(); document.getElementById('videoModal').style.display = 'none'; addLog('关闭播放器'); }
+function showHome() { document.getElementById('detailArea').style.display = 'none'; document.getElementById('listArea').style.display = 'grid'; document.getElementById('status').style.display = 'block'; }
+
+// 初始化
+window.onload = function() { initApiSites(); loadCategory('', document.querySelector('#categoryBar button')); };
+document.getElementById('keyword').addEventListener('keypress', e => { if (e.key === 'Enter') searchAll(); });
+</script>
+</body>
+</html>

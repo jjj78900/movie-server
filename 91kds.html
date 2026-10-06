@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPTV 直播</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0b0e1a;color:#e8ecf7;padding-bottom:40px}
+.header{position:sticky;top:0;background:#131727;padding:15px;z-index:100;box-shadow:0 2px 10px rgba(0,0,0,.5);display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.header h1{font-size:18px;background:linear-gradient(135deg,#7aa2ff,#b07cff);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap;}
+.header select{flex:1;min-width:150px;padding:8px 12px;border-radius:8px;border:1px solid #262c47;background:#0d1120;color:#e8ecf7;font-size:13px;outline:none;}
+.header button{padding:8px 16px;border-radius:8px;border:none;background:#5b8cff;color:#fff;font-weight:bold;cursor:pointer;font-size:13px;white-space:nowrap;}
+.header button:active{transform:scale(.97);}
+.category-bar{display:flex;overflow-x:auto;white-space:nowrap;padding:10px 15px;gap:8px;background:#131727;border-top:1px solid #262c47;scrollbar-width:none;}
+.category-bar::-webkit-scrollbar{display:none;}
+.category-bar button{padding:6px 16px;border-radius:20px;border:1px solid #262c47;background:#0d1120;color:#a9b2ce;font-size:13px;cursor:pointer;transition:all .2s;flex-shrink:0;}
+.category-bar button.active{background:#5b8cff;color:#fff;border-color:#5b8cff;font-weight:bold;}
+.container{max-width:1200px;margin:0 auto;padding:15px}
+.status{text-align:center;padding:12px;color:#8b93b0;font-size:13px;display:none;line-height:1.8;}
+.status button.refresh-btn{padding:4px 12px;border-radius:4px;border:none;background:#ffb648;color:#000;font-weight:bold;cursor:pointer;margin-left:10px;font-size:12px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-top:15px}
+.card{background:#1b2036;border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .2s;position:relative;padding:15px 10px;text-align:center;}
+.card:hover{transform:translateY(-3px);background:#252b45;}
+.card .ch-name{font-size:14px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card .ch-desc{font-size:11px;color:#8b93b0;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card .play-icon{font-size:24px;margin-bottom:8px;}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:1000;justify-content:center;align-items:center;flex-direction:column;padding:20px}
+.modal video{width:100%;max-width:900px;height:auto;max-height:70vh;background:#000;border-radius:8px;}
+.close-btn{margin-top:15px;padding:10px 30px;background:#ff6b81;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:bold}
+.debug-float{position:fixed;bottom:20px;right:20px;background:#ffb648;color:#000;width:40px;height:40px;border-radius:50%;display:flex;justify-content:center;align-items:center;font-size:20px;cursor:pointer;box-shadow:0 4px 10px rgba(0,0,0,.5);z-index:999;}
+.debug-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.95);z-index:10000;justify-content:center;align-items:center;padding:20px;}
+.debug-content{background:#1b2036;width:100%;max-width:800px;max-height:80vh;border-radius:12px;display:flex;flex-direction:column;}
+.debug-header{padding:15px;border-bottom:1px solid #262c47;display:flex;justify-content:space-between;align-items:center;}
+.debug-body{padding:15px;overflow-y:auto;flex:1;font-family:monospace;font-size:12px;color:#9fe8c8;white-space:pre-wrap;word-break:break-all;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📺 IPTV</h1>
+  <select id="sourceSelect" onchange="onSourceChange()">
+    <option value="">-- 选择直播源 --</option>
+  </select>
+  <button onclick="loadSource()">🔄 加载</button>
+</div>
+
+<div class="category-bar" id="categoryBar">
+  <button class="active" onclick="filterByGroup('全部', this)">全部</button>
+  <button onclick="filterByGroup('央视', this)">央视</button>
+  <button onclick="filterByGroup('卫视', this)">卫视</button>
+  <button onclick="filterByGroup('地方', this)">地方</button>
+  <button onclick="filterByGroup('港澳台', this)">港澳台</button>
+  <button onclick="filterByGroup('体育', this)">体育</button>
+  <button onclick="filterByGroup('影视', this)">影视</button>
+  <button onclick="filterByGroup('其他', this)">其他</button>
+</div>
+
+<div class="container">
+  <div id="status" class="status"></div>
+  <div id="listArea" class="grid"></div>
+</div>
+
+<div class="debug-float" onclick="openDebug()">🐞</div>
+
+<div id="videoModal" class="modal">
+  <video id="videoPlayer" controls autoplay></video>
+  <button class="close-btn" onclick="closePlayer()">关闭播放器</button>
+</div>
+
+<div id="debugModal" class="debug-modal">
+  <div class="debug-content">
+    <div class="debug-header">
+      <h3>运行日志</h3>
+      <button style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;" onclick="closeDebug()">×</button>
+    </div>
+    <div class="debug-body" id="debugBody"></div>
+  </div>
+</div>
+
+<script>
+// ============ 可选直播源列表 ============
+// 每个源都经过社区维护，每日自动更新，建议逐个尝试，选最流畅的一个
+const SOURCES = [
+  { name: 'Guovin/iptv-api (推荐)', url: 'https://raw.githubusercontent.com/Guovin/iptv-api/gd/output/result.m3u' },
+  { name: 'best-fan/iptv-sources', url: 'https://raw.githubusercontent.com/best-fan/iptv-sources/master/cn_all.m3u8' },
+  { name: 'vbskycn IPTV4 (带台标)', url: 'https://live.zbds.top/tv/iptv4.m3u' },
+  { name: 'CCSH/IPTV', url: 'https://raw.githubusercontent.com/CCSH/IPTV/refs/heads/main/live.m3u' },
+  { name: 'Collect-IPTV (测速优选)', url: 'https://raw.githubusercontent.com/zilong7728/Collect-IPTV/refs/heads/main/best_sorted.m3u' }
+];
+
+// ============ 全局变量 ============
+let allChannels = [];       // 解析出来的全部频道
+let hlsInstance = null;     // HLS实例，用于彻底关闭视频
+let debugLogs = [];         // 日志
+
+// ============ 日志 ============
+function addLog(msg) {
+  const t = new Date().toLocaleTimeString();
+  debugLogs.push(`[${t}] ${msg}`);
+  if (debugLogs.length > 200) debugLogs.shift();
+}
+function openDebug() {
+  document.getElementById('debugBody').textContent = debugLogs.join('\n');
+  document.getElementById('debugModal').style.display = 'flex';
+}
+function closeDebug() {
+  document.getElementById('debugModal').style.display = 'none';
+}
+
+// ============ 页面初始化 ============
+window.onload = function() {
+  // 把源列表填进下拉菜单
+  const sel = document.getElementById('sourceSelect');
+  SOURCES.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = s.name;
+    sel.appendChild(opt);
+  });
+  // 默认选中第一个（推荐那个）
+  sel.value = '0';
+  loadSource();
+};
+
+function onSourceChange() {
+  const sel = document.getElementById('sourceSelect');
+  if (sel.value !== '') {
+    loadSource();
+  }
+}
+
+// ============ 加载选中的直播源 ============
+async function loadSource() {
+  const sel = document.getElementById('sourceSelect');
+  const idx = sel.value;
+  if (idx === '') { addLog('请先选择一个直播源'); return; }
+  const source = SOURCES[idx];
+  addLog(`加载源: ${source.name}`);
+
+  const statusEl = document.getElementById('status');
+  const listEl = document.getElementById('listArea');
+  listEl.innerHTML = '';
+  statusEl.style.display = 'block';
+  statusEl.textContent = '正在加载直播源...';
+
+  try {
+    // 通过本地Node代理请求M3U文件（避免跨域）
+    const proxyUrl = `/api/proxy?url=${encodeURIComponent(source.url)}`;
+    addLog(`请求: ${proxyUrl}`);
+    const resp = await fetch(proxyUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    addLog(`M3U 内容长度: ${text.length}`);
+
+    // 解析 M3U
+    allChannels = parseM3U(text);
+    addLog(`解析出 ${allChannels.length} 个频道`);
+
+    if (allChannels.length === 0) {
+      statusEl.innerHTML = '该源没有解析到任何频道，请换一个源试试 <button class="refresh-btn" onclick="loadSource()">🔄 重试</button>';
+      statusEl.style.color = '#ffb648';
+      return;
+    }
+
+    statusEl.style.display = 'none';
+    // 默认显示“全部”
+    filterByGroup('全部', document.querySelector('#categoryBar button.active'));
+
+  } catch (e) {
+    addLog(`加载失败: ${e.message}`);
+    statusEl.innerHTML = `加载失败: ${e.message} <button class="refresh-btn" onclick="loadSource()">🔄 重试</button>`;
+    statusEl.style.color = '#ffb648';
+  }
+}
+
+// ============ 解析 M3U 文本 ============
+function parseM3U(text) {
+  const lines = text.split('\n');
+  const channels = [];
+  let current = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    if (line.startsWith('#EXTINF:')) {
+      // 解析频道名和分组
+      // 格式示例：#EXTINF:-1 tvg-name="CCTV-1" group-title="央视",CCTV-1
+      const nameMatch = line.match(/,(.+)$/);
+      const groupMatch = line.match(/group-title="([^"]*)"/i);
+      const name = nameMatch ? nameMatch[1].trim() : '未知频道';
+      const group = groupMatch ? groupMatch[1].trim() : '其他';
+      current = { name, group, url: '' };
+    } else if (line.startsWith('#')) {
+      // 其他 # 开头的行忽略
+      continue;
+    } else {
+      // 非 # 开头的行是播放地址
+      if (current) {
+        current.url = line;
+        channels.push(current);
+        current = null;
+      }
+    }
+  }
+  return channels;
+}
+
+// ============ 按分组筛选频道 ============
+function filterByGroup(groupName, btn) {
+  // 更新按钮高亮
+  if (btn) {
+    document.querySelectorAll('#categoryBar button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  let filtered = allChannels;
+  if (groupName !== '全部') {
+    // 模糊匹配分组名
+    const key = groupName;
+    filtered = allChannels.filter(ch => {
+      const g = ch.group || '';
+      if (key === '央视') return g.includes('央视') || g.includes('CCTV') || ch.name.includes('CCTV');
+      if (key === '卫视') return g.includes('卫视') || ch.name.includes('卫视');
+      if (key === '地方') return g.includes('地方') || g.includes('省') || g.includes('市');
+      if (key === '港澳台') return g.includes('港澳') || g.includes('台湾') || g.includes('香港') || g.includes('澳门');
+      if (key === '体育') return g.includes('体育') || ch.name.includes('体育');
+      if (key === '影视') return g.includes('影视') || g.includes('电影') || ch.name.includes('影视') || ch.name.includes('电影');
+      return g.includes(key) || ch.name.includes(key);
+    });
+  }
+
+  renderChannels(filtered);
+}
+
+// ============ 渲染频道卡片 ============
+function renderChannels(list) {
+  const listEl = document.getElementById('listArea');
+  if (list.length === 0) {
+    listEl.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#8b93b0;padding:40px;">该分类下没有频道</p>';
+    return;
+  }
+  let html = '';
+  list.forEach((ch, i) => {
+    // 用索引来传参，避免频道名里的引号把onclick搞坏
+    html += `
+      <div class="card" onclick="playChannel(${i})">
+        <div class="play-icon">📺</div>
+        <div class="ch-name">${escapeHtml(ch.name)}</div>
+        <div class="ch-desc">${escapeHtml(ch.group)}</div>
+      </div>`;
+  });
+  listEl.innerHTML = html;
+  // 把当前显示的列表存起来，供点击时索引
+  window._currentList = list;
+}
+
+// ============ 播放频道 ============
+function playChannel(index) {
+  const list = window._currentList;
+  if (!list || !list[index]) return;
+  const ch = list[index];
+  addLog(`播放: ${ch.name} -> ${ch.url}`);
+
+  const video = document.getElementById('videoPlayer');
+  document.getElementById('videoModal').style.display = 'flex';
+
+  // 播放前先彻底清理上一个视频
+  stopCurrentVideo();
+
+  if (ch.url.includes('.m3u8')) {
+    if (Hls.isSupported()) {
+      hlsInstance = new Hls();
+      hlsInstance.loadSource(ch.url);
+      hlsInstance.attachMedia(video);
+      video.play().catch(e => addLog('自动播放被阻止，请手动点击播放'));
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = ch.url;
+      video.play().catch(e => addLog('自动播放被阻止，请手动点击播放'));
+    } else {
+      alert('当前浏览器不支持 m3u8 播放');
+      closePlayer();
+    }
+  } else {
+    // 不是 m3u8 格式，直接当普通视频播
+    video.src = ch.url;
+    video.play().catch(e => addLog('自动播放被阻止，请手动点击播放'));
+  }
+}
+
+// ============ 停止并清理当前视频 ============
+function stopCurrentVideo() {
+  const video = document.getElementById('videoPlayer');
+  if (!video) return;
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  if (hlsInstance) {
+    hlsInstance.destroy();
+    hlsInstance = null;
+    addLog('旧视频流已销毁');
+  }
+}
+
+// ============ 关闭播放器 ============
+function closePlayer() {
+  stopCurrentVideo();
+  document.getElementById('videoModal').style.display = 'none';
+}
+
+// ============ 简单的 HTML 转义 ============
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+</script>
+</body>
+</html>
